@@ -47,7 +47,7 @@ export default function Home() {
   return (
     <div className="relative flex flex-col items-center justify-center min-h-screen overflow-hidden">
       {/* Background with waves and gradient */}
-      <div className="absolute inset-0 bg-gradient-to-b from-[#2A9D8F] via-[#4FB6AC] to-[#F0B232]/30 overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-b from-[#dd9e29] via-[#f7e602] to-[#F0B232]/30 overflow-hidden">
         {/* Wave decoration */}
         <div className="absolute bottom-0 left-0 right-0 h-64 opacity-30">
           <svg
@@ -101,7 +101,7 @@ export default function Home() {
               }}
               className="relative"
             >
-              <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-[#F0B232] to-[#2A9D8F] opacity-75 blur-sm"></div>
+              <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-[#F0B232] to-[#dd9e29] opacity-75 blur-sm"></div>
               <img
                 src={duckfoto.src}
                 alt="Logo DuckChat"
@@ -110,7 +110,7 @@ export default function Home() {
             </motion.div>
 
             <motion.h1
-              className="mt-4 text-5xl font-bold bg-gradient-to-r from-[#F0B232] to-[#2A9D8F] bg-clip-text text-transparent"
+              className="mt-4 text-5xl font-bold bg-gradient-to-r from-[#F0B232] to-[#dd9e29] bg-clip-text text-transparent"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.4, duration: 0.6 }}
@@ -126,7 +126,7 @@ export default function Home() {
         <div className="space-y-5 grid">
           <Link href="/login" className="w-full">
             <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-              <Button className="w-full py-6 text-lg font-medium bg-[#2A9D8F] hover:bg-[#238077] transition-all duration-300 shadow-lg hover:shadow-xl rounded-xl cursor-pointer">
+              <Button className="w-full py-6 text-lg font-medium bg-[#dd9e29] hover:bg-[#dd9e29] transition-all duration-300 shadow-lg hover:shadow-xl rounded-xl cursor-pointer">
                 Entrar
               </Button>
             </motion.div>
@@ -136,7 +136,7 @@ export default function Home() {
             <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
               <Button
                 variant="outline"
-                className="w-full py-6 text-lg font-medium border-2 border-[#2A9D8F] text-[#2A9D8F] hover:bg-[#2A9D8F]/10 transition-all duration-300 rounded-xl cursor-pointer"
+                className="w-full py-6 text-lg font-medium border-2 border-[#dd9e29] text-[#dd9e29] hover:bg-[#ddc494]/10 transition-all duration-300 rounded-xl cursor-pointer"
               >
                 Criar Conta
               </Button>
