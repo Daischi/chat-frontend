@@ -4,7 +4,6 @@ import type React from "react";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "../context/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,29 +19,27 @@ import Link from "next/link";
 import { AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [debugInfo, setDebugInfo] = useState("");
   const router = useRouter();
-  const { login } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (password !== confirmPassword) {
+      setError("As senhas não coincidem");
+      return;
+    }
+
     setLoading(true);
-    setDebugInfo("Iniciando requisição...");
 
     try {
-      // Exibir informações de depuração
-      setDebugInfo(
-        (prev) =>
-          prev + "\nEnviando requisição para: http://localhost:8000/login.php"
-      );
-
-      const response = await fetch("http://localhost:8000/login.php", {
+      const response = await fetch("http://localhost:8000/register.php", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -50,31 +47,15 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
 
-      setDebugInfo((prev) => prev + `\nStatus da resposta: ${response.status}`);
-
       const data = await response.json();
-      setDebugInfo(
-        (prev) => prev + `\nDados recebidos: ${JSON.stringify(data)}`
-      );
 
       if (data.success) {
-        login(data.user);
-        router.push("/chat");
+        router.push("/login?registered=true");
       } else {
-        setError(
-          data.message || "Falha ao fazer login. Verifique suas credenciais."
-        );
+        setError(data.message || "Falha ao registrar. Tente novamente.");
       }
     } catch (err) {
-      console.error("Erro completo:", err);
       setError("Erro ao conectar com o servidor. Verifique sua conexão.");
-      setDebugInfo(
-        (prev) =>
-          prev +
-          `\nErro capturado: ${
-            err instanceof Error ? err.message : String(err)
-          }`
-      );
     } finally {
       setLoading(false);
     }
@@ -85,10 +66,10 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl text-center text-green-600">
-            Entrar
+            Criar Conta
           </CardTitle>
           <CardDescription className="text-center">
-            Entre com sua conta para acessar o chat
+            Registre-se para acessar o chat
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -120,27 +101,30 @@ export default function LoginPage() {
                 required
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirmar Senha</Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+              />
+            </div>
             <Button
               type="submit"
               className="w-full bg-green-600 hover:bg-green-700"
               disabled={loading}
             >
-              {loading ? "Entrando..." : "Entrar"}
+              {loading ? "Registrando..." : "Registrar"}
             </Button>
           </form>
-
-          {/* Área de depuração - remova em produção */}
-          {debugInfo && (
-            <div className="mt-4 p-2 bg-gray-100 rounded text-xs overflow-auto max-h-40">
-              <pre>{debugInfo}</pre>
-            </div>
-          )}
         </CardContent>
         <CardFooter className="flex justify-center">
           <p className="text-sm text-gray-600">
-            Não tem uma conta?{" "}
-            <Link href="/register" className="text-green-600 hover:underline">
-              Registre-se
+            Já tem uma conta?{" "}
+            <Link href="/login" className="text-green-600 hover:underline">
+              Faça login
             </Link>
           </p>
         </CardFooter>

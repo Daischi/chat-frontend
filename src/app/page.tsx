@@ -1,40 +1,34 @@
-"use client";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { login } from "@/lib/api";
-
-export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const router = useRouter();
-
-  const handleLogin = async () => {
-    const res = await login(email, password);
-    if (res.status === "ok") {
-      localStorage.setItem("user_id", res.user.id);
-      localStorage.setItem("email", res.user.email);
-      router.push("/chat");
-    } else {
-      alert(res.message);
-    }
-  };
-
+export default function Home() {
   return (
-    <div>
-      <h1>Login</h1>
-      <input
-        placeholder="Email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
-      <input
-        type="password"
-        placeholder="Senha"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
-      <button onClick={handleLogin}>Entrar</button>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-green-50 to-green-100 p-4">
+      <div className="w-full max-w-md p-8 space-y-8 bg-white rounded-xl shadow-lg">
+        <div className="text-center">
+          <h1 className="text-4xl font-bold text-green-600">Chat Virtual</h1>
+          <p className="mt-2 text-gray-600">
+            Conecte-se com amigos e participe do grupo global
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          <Link href="/login" className="w-full">
+            <Button className="w-full bg-green-600 hover:bg-green-700">
+              Entrar
+            </Button>
+          </Link>
+
+          <Link href="/register" className="w-full">
+            <Button
+              variant="outline"
+              className="w-full border-green-600 text-green-600 hover:bg-green-50"
+            >
+              Criar Conta
+            </Button>
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }
