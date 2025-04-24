@@ -47,7 +47,7 @@ export default function Home() {
   return (
     <div className="relative flex flex-col items-center justify-center min-h-screen overflow-hidden">
       {/* Background with waves and gradient */}
-      <div className="absolute inset-0 bg-gradient-to-b from-[#dd9e29] via-[#f7e602] to-[#F0B232]/30 overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-b from-[#b3a924] via-[#b99856] to-[#cf9934] overflow-hidden">
         {/* Wave decoration */}
         <div className="absolute bottom-0 left-0 right-0 h-64 opacity-30">
           <svg
