@@ -6,8 +6,11 @@ import { AuthProvider } from "./context/auth-context";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
-  title: "Chat Virtual",
-  description: "Chat virtual estilo WhatsApp",
+  title: "DuckChat",
+  description: "Conecte-se com amigos no DuckChat",
+  icons: {
+    icon: "/favicon.png",
+  },
 };
 
 export default function RootLayout({
