@@ -69,12 +69,14 @@ export default function PrivateChatPage() {
     }, 3000); // Poll for new messages every 3 seconds
 
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, router, receiverEmail]);
 
   useEffect(() => {
     if (receiverEmail) {
       fetchPrivateMessages();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receiverEmail]);
 
   useEffect(() => {

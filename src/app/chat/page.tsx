@@ -1,13 +1,11 @@
 "use client";
 
 import type React from "react";
-
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
   Send,
-  Menu,
   ArrowLeft,
   Smile,
   Paperclip,
@@ -16,14 +14,13 @@ import {
   Video,
   RabbitIcon as Duck,
   Users,
-  Loader2,
+  MessageSquare,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "../context/auth-context";
 import ChatMessage from "../components/chat-message";
-import UserSearch from "../components/user-search";
 import ConversationList from "../components/conversation-list";
 import LoadingDuck from "../components/loading-duck";
 
@@ -54,20 +51,34 @@ interface Chat {
 }
 
 const DuckBackground = () => (
-  <div className="fixed inset-0 pointer-events-none overflow-hidden opacity-10">
-    {Array.from({ length: 8 }).map((_, i) => (
-      <div
+  <div className="fixed inset-0 pointer-events-none overflow-hidden">
+    {Array.from({ length: 12 }).map((_, i) => (
+      <motion.div
         key={i}
         className="absolute"
-        style={{
+        initial={{
           left: `${Math.random() * 100}%`,
           top: `${Math.random() * 100}%`,
-          opacity: 0.2,
+          opacity: 0.1,
+          scale: 0.8,
+        }}
+        animate={{
+          y: [0, -15, 0],
+          rotate: [0, i % 2 === 0 ? 5 : -5, 0],
+          opacity: [0.1, 0.18, 0.1],
+          scale: [0.8, 1, 0.8],
+        }}
+        transition={{
+          duration: 3 + Math.random() * 4,
+          repeat: Infinity,
+          ease: "easeInOut",
+          delay: i * 0.5,
         }}
       >
-        <Duck size={Math.random() * 30 + 20} className="text-[#F0B232]" />
-      </div>
+        <Duck size={Math.random() * 40 + 20} className="text-[#F0B232]" />
+      </motion.div>
     ))}
+    <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-amber-200/20 to-transparent" />
   </div>
 );
 
@@ -82,56 +93,70 @@ export default function ChatPage() {
   const [newMessage, setNewMessage] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<Contact[]>([]);
+  const [, setSearchResults] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isChangingChat, setIsChangingChat] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(true);
+  const [isTyping, setIsTyping] = useState(false);
 
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
 
-  // Efeito para redirecionar se não estiver logado
   useEffect(() => {
     if (!user) {
       router.push("/login");
       return;
     }
 
-    // Inicialização
     fetchContacts();
     fetchMessages();
 
-    // Polling para atualizações
     const interval = setInterval(() => {
       if (activeChat.type === "global") {
-        fetchMessages(false); // Não mostrar indicador de carregamento para atualizações automáticas
+        fetchMessages(false);
       } else if (activeChat.contactId) {
-        fetchPrivateMessages(activeChat.contactId, false); // Não mostrar indicador de carregamento para atualizações automáticas
+        fetchPrivateMessages(activeChat.contactId, false);
       }
-      fetchContacts(); // Atualiza a lista de contatos periodicamente
+      fetchContacts();
     }, 3000);
 
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, router, activeChat]);
 
-  // Efeito para rolar para o final quando as mensagens mudam
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  // Efeito para pesquisa
   useEffect(() => {
     if (searchQuery.trim()) {
       searchUsers(searchQuery);
     } else {
       setSearchResults([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
 
-  // Função para buscar contatos
+  useEffect(() => {
+    let typingTimeout: NodeJS.Timeout;
+
+    if (newMessage.trim().length > 0) {
+      setIsTyping(true);
+      typingTimeout = setTimeout(() => {
+        setIsTyping(false);
+      }, 3000);
+    } else {
+      setIsTyping(false);
+    }
+
+    return () => {
+      clearTimeout(typingTimeout);
+    };
+  }, [newMessage]);
+
   const fetchContacts = async () => {
     try {
       const response = await fetch("http://localhost:8000/get_contacts.php");
@@ -147,7 +172,6 @@ export default function ChatPage() {
     }
   };
 
-  // Função para buscar mensagens globais
   const fetchMessages = async (showLoading = true) => {
     if (showLoading) {
       setIsLoadingMessages(true);
@@ -171,7 +195,6 @@ export default function ChatPage() {
     }
   };
 
-  // Função para buscar mensagens privadas
   const fetchPrivateMessages = async (
     contactId: number,
     showLoading = true
@@ -210,7 +233,6 @@ export default function ChatPage() {
     }
   };
 
-  // Função para pesquisar usuários
   const searchUsers = async (query: string) => {
     try {
       const response = await fetch(
@@ -226,11 +248,21 @@ export default function ChatPage() {
     }
   };
 
-  // Função para enviar mensagem
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!newMessage.trim() || !user) return;
+
+    const tempMessage: Message = {
+      id: Date.now(),
+      sender_id: user.id,
+      sender_email: user.email,
+      message: newMessage,
+      created_at: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, tempMessage]);
+    setNewMessage("");
 
     try {
       let response;
@@ -243,7 +275,7 @@ export default function ChatPage() {
           },
           body: JSON.stringify({
             user_id: user.id,
-            message: newMessage,
+            message: tempMessage.message,
           }),
         });
       } else {
@@ -255,7 +287,7 @@ export default function ChatPage() {
           body: JSON.stringify({
             user_id: user.id,
             receiver_id: activeChat.contactId,
-            message: newMessage,
+            message: tempMessage.message,
           }),
         });
       }
@@ -263,27 +295,23 @@ export default function ChatPage() {
       const data = await response.json();
 
       if (data.success) {
-        setNewMessage("");
-
-        // Atualizar mensagens
         if (activeChat.type === "global") {
-          fetchMessages(false); // Não mostrar indicador de carregamento após envio
+          fetchMessages(false);
         } else if (activeChat.contactId) {
-          fetchPrivateMessages(activeChat.contactId, false); // Não mostrar indicador de carregamento após envio
+          fetchPrivateMessages(activeChat.contactId, false);
         }
       }
     } catch (err) {
       console.error("Erro ao enviar mensagem:", err);
     }
+
+    messageInputRef.current?.focus();
   };
 
-  // Função para iniciar chat privado
   const startPrivateChat = (contact: Contact) => {
-    // IMPORTANTE: Limpar mensagens e ativar tela de carregamento
     setMessages([]);
     setIsChangingChat(true);
 
-    // Depois mudar o chat ativo
     setActiveChat({
       id: contact.id,
       type: "private",
@@ -292,7 +320,6 @@ export default function ChatPage() {
       contactEmail: contact.email,
     });
 
-    // Buscar mensagens depois de um delay para mostrar a animação
     setTimeout(() => {
       fetchPrivateMessages(contact.id);
       setIsChangingChat(false);
@@ -303,20 +330,16 @@ export default function ChatPage() {
     setShowMobileMenu(false);
   };
 
-  // Função para voltar ao chat global
   const goToGlobalChat = () => {
-    // IMPORTANTE: Limpar mensagens e ativar tela de carregamento
     setMessages([]);
     setIsChangingChat(true);
 
-    // Depois mudar o chat ativo
     setActiveChat({
       id: 0,
       type: "global",
       name: "Chat Global",
     });
 
-    // Buscar mensagens depois de um delay para mostrar a animação
     setTimeout(() => {
       fetchMessages();
       setIsChangingChat(false);
@@ -325,265 +348,310 @@ export default function ChatPage() {
     setShowMobileMenu(false);
   };
 
-  // Função para rolar para o final das mensagens
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Função para fazer logout
-  const handleLogout = () => {
-    logout();
-    router.push("/login");
-  };
-
-  // Renderização condicional para usuário não logado
   if (!user) {
-    return null; // Será redirecionado no useEffect
+    return null;
   }
 
   return (
-    <div className="flex h-screen bg-[#FFF7D6] overflow-hidden">
-      {/* Decorative background */}
+    <div className="flex h-screen bg-gradient-to-b from-amber-50 to-amber-100">
       <DuckBackground />
 
-      {/* Sidebar */}
-      <AnimatePresence>
-        {(showMobileMenu || window.innerWidth > 768) && (
-          <motion.div
-            initial={{ x: -300, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: -300, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="w-full md:w-[350px] flex flex-col border-r border-[#F0B232]/20 bg-white z-10 absolute md:relative h-full"
-          >
-            {/* Sidebar Header */}
-            <div className="p-4 bg-[#F0B232] flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <Avatar className="bg-[#dd9e29] text-white h-10 w-10">
-                  <AvatarFallback>
-                    {user.email.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <h2 className="font-medium text-white">DuckChat</h2>
-                  <p className="text-xs text-white/80">{user.email}</p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-2">
+      <div className="w-full h-full flex">
+        <AnimatePresence>
+          {(showMobileMenu || window.innerWidth > 768) && (
+            <motion.div
+              initial={{ x: -300, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -300, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="w-full md:w-[350px] flex flex-col border-r border-amber-200/50 bg-white/80 backdrop-blur-sm z-10 absolute md:relative h-full"
+            >
+              {!showSearch && (
+                <ConversationList
+                  contacts={contacts}
+                  activeChat={activeChat}
+                  goToGlobalChat={goToGlobalChat}
+                  startPrivateChat={startPrivateChat}
+                />
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div className="flex-1 flex flex-col relative bg-white/60 backdrop-blur-md">
+          <div className="p-4 bg-white/80 backdrop-blur-sm border-b border-amber-200/50 flex items-center justify-between shadow-sm z-10">
+            <div className="flex items-center space-x-3">
+              {showMobileMenu === false && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="text-white hover:bg-[#dd9e29]"
-                  onClick={handleLogout}
+                  className="md:hidden mr-1 text-amber-600 hover:bg-amber-100 rounded-full"
+                  onClick={() => setShowMobileMenu(true)}
                 >
-                  <Menu className="h-5 w-5" />
+                  <ArrowLeft className="h-5 w-5" />
                 </Button>
+              )}
+              <div className="relative">
+                <Avatar className="bg-gradient-to-br from-amber-400 to-amber-500 text-white h-10 w-10 ring-2 ring-amber-200">
+                  <AvatarFallback>
+                    {activeChat.type === "global" ? (
+                      <Users className="h-5 w-5" />
+                    ) : (
+                      activeChat.name.charAt(0).toUpperCase()
+                    )}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-400 border-2 border-white"></span>
+              </div>
+              <div>
+                <h2 className="font-bold text-amber-900">
+                  {activeChat.name}
+                  {activeChat.type === "private" && isTyping && (
+                    <span className="text-xs ml-2 text-amber-600 animate-pulse">
+                      digitando...
+                    </span>
+                  )}
+                </h2>
+                <p className="text-xs text-amber-700/70 font-medium">
+                  {activeChat.type === "global" ? (
+                    <span className="flex items-center">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1 inline-block"></span>
+                      Todos os usuários
+                    </span>
+                  ) : (
+                    <span className="flex items-center">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1 inline-block"></span>
+                      Online
+                    </span>
+                  )}
+                </p>
               </div>
             </div>
-
-            {/* Search */}
-            <UserSearch
-              showSearch={showSearch}
-              setShowSearch={setShowSearch}
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              searchResults={searchResults}
-              startPrivateChat={startPrivateChat}
-              searchInputRef={searchInputRef}
-            />
-
-            {/* Conversations List */}
-            {!showSearch && (
-              <ConversationList
-                contacts={contacts}
-                activeChat={activeChat}
-                goToGlobalChat={goToGlobalChat}
-                startPrivateChat={startPrivateChat}
-              />
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Chat Area */}
-      <div className="flex-1 flex flex-col relative">
-        {/* Chat Header */}
-        <div className="p-4 bg-white border-b border-[#F0B232]/20 flex items-center justify-between shadow-sm z-10">
-          <div className="flex items-center space-x-3">
-            {showMobileMenu === false && (
+            <div className="flex items-center space-x-1">
               <Button
                 variant="ghost"
                 size="icon"
-                className="md:hidden mr-1"
-                onClick={() => setShowMobileMenu(true)}
+                className="text-amber-600 hover:bg-amber-100 rounded-full"
               >
-                <ArrowLeft className="h-5 w-5" />
+                <Phone className="h-5 w-5" />
               </Button>
-            )}
-            <Avatar className="bg-[#F0B232] text-white h-10 w-10">
-              <AvatarFallback>
-                {activeChat.type === "global" ? (
-                  <Users className="h-5 w-5" />
-                ) : (
-                  activeChat.name.charAt(0).toUpperCase()
-                )}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <h2 className="font-medium text-gray-900">{activeChat.name}</h2>
-              <p className="text-xs text-gray-500">
-                {activeChat.type === "global" ? "Todos os usuários" : "Online"}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-[#F0B232] hover:bg-[#FFF7D6]"
-            >
-              <Phone className="h-5 w-5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-[#F0B232] hover:bg-[#FFF7D6]"
-            >
-              <Video className="h-5 w-5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-[#F0B232] hover:bg-[#FFF7D6]"
-            >
-              <MoreVertical className="h-5 w-5" />
-            </Button>
-          </div>
-        </div>
-
-        {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4 bg-[#FFF7D6]/60">
-          {loading ? (
-            <div className="flex justify-center items-center h-full">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{
-                  duration: 2,
-                  repeat: Number.POSITIVE_INFINITY,
-                  ease: "linear",
-                }}
-                className="w-16 h-16 text-[#F0B232]"
-              >
-                <Loader2 className="w-full h-full" />
-              </motion.div>
-            </div>
-          ) : isChangingChat ? (
-            <LoadingDuck />
-          ) : isLoadingMessages ? (
-            <div className="flex flex-col justify-center items-center h-full">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{
-                  duration: 1.5,
-                  repeat: Number.POSITIVE_INFINITY,
-                  ease: "linear",
-                }}
-                className="w-12 h-12 text-[#F0B232] mb-3"
-              >
-                <Loader2 className="w-full h-full" />
-              </motion.div>
-              <p className="text-[#dd9e29] font-medium">
-                Carregando mensagens...
-              </p>
-            </div>
-          ) : messages.length === 0 ? (
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="flex flex-col justify-center items-center h-full text-gray-500 space-y-4"
-            >
-              <motion.div
-                animate={{ y: [0, -10, 0] }}
-                transition={{
-                  duration: 2,
-                  repeat: Number.POSITIVE_INFINITY,
-                  ease: "easeInOut",
-                }}
-                className="text-[#dd9e29]"
-              >
-                <Duck size={64} />
-              </motion.div>
-              <p className="text-lg text-[#dd9e29]">
-                Nenhuma mensagem ainda. Seja o primeiro a enviar!
-              </p>
-            </motion.div>
-          ) : (
-            <div className="space-y-4">
-              <AnimatePresence>
-                {messages.map((message) => (
-                  <motion.div
-                    key={message.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    <ChatMessage
-                      message={message}
-                      isCurrentUser={message.sender_id === user.id}
-                    />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-              <div ref={messagesEndRef} />
-            </div>
-          )}
-        </div>
-
-        {/* Message Input */}
-        <motion.div
-          initial={{ y: 50 }}
-          animate={{ y: 0 }}
-          className="p-3 bg-white border-t border-[#F0B232]/20 shadow-md z-10"
-        >
-          <form onSubmit={sendMessage} className="flex items-center space-x-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="text-[#F0B232] hover:bg-[#FFF7D6]"
-            >
-              <Smile className="h-5 w-5" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="text-[#F0B232] hover:bg-[#FFF7D6]"
-            >
-              <Paperclip className="h-5 w-5" />
-            </Button>
-            <Input
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Digite uma mensagem"
-              className="flex-1 bg-[#FFF7D6] border-none focus-visible:ring-[#F0B232] rounded-full"
-              disabled={isLoadingMessages || isChangingChat}
-            />
-            <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
               <Button
-                type="submit"
+                variant="ghost"
                 size="icon"
-                className="bg-[#F0B232] hover:bg-[#dd9e29] text-white rounded-full"
-                disabled={
-                  !newMessage.trim() || isLoadingMessages || isChangingChat
-                }
+                className="text-amber-600 hover:bg-amber-100 rounded-full"
               >
-                <Send className="h-5 w-5" />
+                <Video className="h-5 w-5" />
               </Button>
-            </motion.div>
-          </form>
-        </motion.div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-amber-600 hover:bg-amber-100 rounded-full"
+              >
+                <MoreVertical className="h-5 w-5" />
+              </Button>
+            </div>
+          </div>
+
+          <div
+            className="flex-1 overflow-y-auto p-4 bg-[#FFF7D6]/70"
+            style={{
+              backgroundImage:
+                "url(\"data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%23F0B232' fill-opacity='0.05' fill-rule='evenodd'/%3E%3C/svg%3E\")",
+            }}
+          >
+            {loading ? (
+              <div className="flex justify-center items-center h-full">
+                <motion.div
+                  animate={{
+                    rotate: 360,
+                    scale: [1, 1.1, 1],
+                  }}
+                  transition={{
+                    rotate: {
+                      duration: 2,
+                      repeat: Number.POSITIVE_INFINITY,
+                      ease: "linear",
+                    },
+                    scale: {
+                      duration: 1,
+                      repeat: Number.POSITIVE_INFINITY,
+                      repeatType: "reverse",
+                    },
+                  }}
+                  className="relative w-20 h-20"
+                >
+                  <Duck className="w-full h-full text-amber-400" />
+                </motion.div>
+              </div>
+            ) : isChangingChat ? (
+              <LoadingDuck />
+            ) : isLoadingMessages ? (
+              <div className="flex flex-col justify-center items-center h-full">
+                <motion.div
+                  className="relative"
+                  animate={{
+                    rotate: [0, 10, -10, 0],
+                    y: [0, -10, 0],
+                  }}
+                  transition={{
+                    duration: 2,
+                    repeat: Number.POSITIVE_INFINITY,
+                    ease: "easeInOut",
+                  }}
+                >
+                  <Duck className="w-16 h-16 text-amber-400" />
+                  <motion.div
+                    className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-2 py-1 bg-white rounded-full shadow-md text-xs text-amber-600 font-medium border border-amber-200 whitespace-nowrap"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    Carregando mensagens...
+                  </motion.div>
+                </motion.div>
+              </div>
+            ) : messages.length === 0 ? (
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="flex flex-col justify-center items-center h-full text-gray-500 space-y-4"
+              >
+                <motion.div
+                  className="relative"
+                  animate={{
+                    y: [0, -15, 0],
+                    rotate: [0, 5, -5, 0],
+                  }}
+                  transition={{
+                    duration: 4,
+                    repeat: Number.POSITIVE_INFINITY,
+                    ease: "easeInOut",
+                  }}
+                >
+                  <Duck size={80} className="text-amber-400" />
+                </motion.div>
+
+                <div className="text-center">
+                  <h3 className="text-lg font-bold text-amber-700 mb-1">
+                    Nenhuma mensagem ainda
+                  </h3>
+                  <p className="text-amber-600">
+                    Seja o primeiro a enviar uma mensagem!
+                  </p>
+                </div>
+
+                <motion.button
+                  className="mt-4 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-400 text-white font-medium rounded-full shadow-md flex items-center space-x-2 hover:from-amber-600 hover:to-amber-500 transition-all"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => messageInputRef.current?.focus()}
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  <span>Enviar mensagem</span>
+                </motion.button>
+              </motion.div>
+            ) : (
+              <div className="space-y-3">
+                <AnimatePresence>
+                  {messages.map((message, index) => (
+                    <motion.div
+                      key={message.id}
+                      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{
+                        duration: 0.3,
+                        delay: index * 0.05 > 0.5 ? 0.5 : index * 0.05,
+                      }}
+                    >
+                      <ChatMessage
+                        message={message}
+                        isCurrentUser={message.sender_id === user.id}
+                      />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+                <div ref={messagesEndRef} />
+              </div>
+            )}
+          </div>
+
+          <motion.div
+            initial={{ y: 50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.2, duration: 0.5, type: "spring" }}
+            className="p-3 bg-white/90 backdrop-blur-sm border-t border-amber-200/50 shadow-lg z-10"
+          >
+            <form
+              onSubmit={sendMessage}
+              className="flex items-center space-x-2"
+            >
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="text-amber-500 hover:bg-amber-100 rounded-full"
+              >
+                <Smile className="h-5 w-5" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="text-amber-500 hover:bg-amber-100 rounded-full"
+              >
+                <Paperclip className="h-5 w-5" />
+              </Button>
+              <div className="relative flex-1">
+                <Input
+                  ref={messageInputRef}
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder="Digite uma mensagem"
+                  className="flex-1 bg-amber-50 border-amber-200 focus-visible:ring-amber-400 rounded-full pl-4 pr-10 py-6 shadow-inner"
+                  disabled={isLoadingMessages || isChangingChat}
+                />
+                {isTyping && (
+                  <span className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <motion.div
+                      className="flex space-x-1"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                    >
+                      {[0, 1, 2].map((i) => (
+                        <motion.div
+                          key={i}
+                          className="h-2 w-2 rounded-full bg-amber-400"
+                          animate={{ y: ["0%", "-50%", "0%"] }}
+                          transition={{
+                            duration: 0.5,
+                            repeat: Infinity,
+                            delay: i * 0.1,
+                          }}
+                        />
+                      ))}
+                    </motion.div>
+                  </span>
+                )}
+              </div>
+              <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
+                <Button
+                  type="submit"
+                  size="icon"
+                  className="bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-600 hover:to-amber-500 text-white rounded-full shadow-md w-12 h-12 flex items-center justify-center"
+                  disabled={
+                    !newMessage.trim() || isLoadingMessages || isChangingChat
+                  }
+                >
+                  <Send className="h-5 w-5" />
+                </Button>
+              </motion.div>
+            </form>
+          </motion.div>
+        </div>
       </div>
     </div>
   );
