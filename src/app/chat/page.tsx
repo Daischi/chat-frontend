@@ -1,21 +1,31 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import type React from "react";
+
+import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { useAuth } from "../context/auth-context";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
-  MessageSquare,
-  LogOut,
-  Users,
   Send,
-  Search,
+  Menu,
   ArrowLeft,
+  Smile,
+  Paperclip,
+  MoreVertical,
+  Phone,
+  Video,
+  RabbitIcon as Duck,
+  Users,
+  Loader2,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "../context/auth-context";
+import ChatMessage from "../components/chat-message";
+import UserSearch from "../components/user-search";
+import ConversationList from "../components/conversation-list";
+import LoadingDuck from "../components/loading-duck";
 
 interface Message {
   id: number;
@@ -43,6 +53,24 @@ interface Chat {
   contactEmail?: string;
 }
 
+const DuckBackground = () => (
+  <div className="fixed inset-0 pointer-events-none overflow-hidden opacity-10">
+    {Array.from({ length: 8 }).map((_, i) => (
+      <div
+        key={i}
+        className="absolute"
+        style={{
+          left: `${Math.random() * 100}%`,
+          top: `${Math.random() * 100}%`,
+          opacity: 0.2,
+        }}
+      >
+        <Duck size={Math.random() * 30 + 20} className="text-[#F0B232]" />
+      </div>
+    ))}
+  </div>
+);
+
 export default function ChatPage() {
   const [activeChat, setActiveChat] = useState<Chat>({
     id: 0,
@@ -52,10 +80,14 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [newMessage, setNewMessage] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showSearch, setShowSearch] = useState(false);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [isChangingChat, setIsChangingChat] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(true);
+
   const { user, logout } = useAuth();
   const router = useRouter();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -75,15 +107,14 @@ export default function ChatPage() {
     // Polling para atualizações
     const interval = setInterval(() => {
       if (activeChat.type === "global") {
-        fetchMessages();
-      } else {
-        fetchPrivateMessages(activeChat.contactId!);
+        fetchMessages(false); // Não mostrar indicador de carregamento para atualizações automáticas
+      } else if (activeChat.contactId) {
+        fetchPrivateMessages(activeChat.contactId, false); // Não mostrar indicador de carregamento para atualizações automáticas
       }
       fetchContacts(); // Atualiza a lista de contatos periodicamente
     }, 3000);
 
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, router, activeChat]);
 
   // Efeito para rolar para o final quando as mensagens mudam
@@ -98,7 +129,6 @@ export default function ChatPage() {
     } else {
       setSearchResults([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
 
   // Função para buscar contatos
@@ -118,7 +148,11 @@ export default function ChatPage() {
   };
 
   // Função para buscar mensagens globais
-  const fetchMessages = async () => {
+  const fetchMessages = async (showLoading = true) => {
+    if (showLoading) {
+      setIsLoadingMessages(true);
+    }
+
     try {
       const response = await fetch("http://localhost:8000/get_messages.php");
       const data = await response.json();
@@ -130,12 +164,23 @@ export default function ChatPage() {
     } catch (err) {
       console.error("Erro ao buscar mensagens:", err);
       setLoading(false);
+    } finally {
+      if (showLoading) {
+        setIsLoadingMessages(false);
+      }
     }
   };
 
   // Função para buscar mensagens privadas
-  const fetchPrivateMessages = async (contactId: number) => {
+  const fetchPrivateMessages = async (
+    contactId: number,
+    showLoading = true
+  ) => {
     if (!contactId) return;
+
+    if (showLoading) {
+      setIsLoadingMessages(true);
+    }
 
     try {
       const response = await fetch("http://localhost:8000/get_private.php", {
@@ -158,6 +203,10 @@ export default function ChatPage() {
     } catch (err) {
       console.error("Erro ao buscar mensagens privadas:", err);
       setLoading(false);
+    } finally {
+      if (showLoading) {
+        setIsLoadingMessages(false);
+      }
     }
   };
 
@@ -218,9 +267,9 @@ export default function ChatPage() {
 
         // Atualizar mensagens
         if (activeChat.type === "global") {
-          fetchMessages();
-        } else {
-          fetchPrivateMessages(activeChat.contactId!);
+          fetchMessages(false); // Não mostrar indicador de carregamento após envio
+        } else if (activeChat.contactId) {
+          fetchPrivateMessages(activeChat.contactId, false); // Não mostrar indicador de carregamento após envio
         }
       }
     } catch (err) {
@@ -230,6 +279,11 @@ export default function ChatPage() {
 
   // Função para iniciar chat privado
   const startPrivateChat = (contact: Contact) => {
+    // IMPORTANTE: Limpar mensagens e ativar tela de carregamento
+    setMessages([]);
+    setIsChangingChat(true);
+
+    // Depois mudar o chat ativo
     setActiveChat({
       id: contact.id,
       type: "private",
@@ -238,20 +292,37 @@ export default function ChatPage() {
       contactEmail: contact.email,
     });
 
-    fetchPrivateMessages(contact.id);
+    // Buscar mensagens depois de um delay para mostrar a animação
+    setTimeout(() => {
+      fetchPrivateMessages(contact.id);
+      setIsChangingChat(false);
+    }, 2000);
+
     setSearchQuery("");
     setShowSearch(false);
+    setShowMobileMenu(false);
   };
 
   // Função para voltar ao chat global
   const goToGlobalChat = () => {
+    // IMPORTANTE: Limpar mensagens e ativar tela de carregamento
+    setMessages([]);
+    setIsChangingChat(true);
+
+    // Depois mudar o chat ativo
     setActiveChat({
       id: 0,
       type: "global",
       name: "Chat Global",
     });
 
-    fetchMessages();
+    // Buscar mensagens depois de um delay para mostrar a animação
+    setTimeout(() => {
+      fetchMessages();
+      setIsChangingChat(false);
+    }, 2000);
+
+    setShowMobileMenu(false);
   };
 
   // Função para rolar para o final das mensagens
@@ -265,198 +336,92 @@ export default function ChatPage() {
     router.push("/login");
   };
 
-  // Formatação de data
-  const formatMessageTime = (dateString: string) => {
-    const date = new Date(dateString);
-    const today = new Date();
-
-    if (date.toDateString() === today.toDateString()) {
-      return format(date, "HH:mm", { locale: ptBR });
-    } else {
-      return format(date, "dd/MM/yyyy HH:mm", { locale: ptBR });
-    }
-  };
-
   // Renderização condicional para usuário não logado
   if (!user) {
     return null; // Será redirecionado no useEffect
   }
 
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="flex h-screen bg-[#FFF7D6] overflow-hidden">
+      {/* Decorative background */}
+      <DuckBackground />
+
       {/* Sidebar */}
-      <div className="w-80 flex flex-col border-r border-gray-200 bg-white">
-        {/* Sidebar Header */}
-        <div className="p-4 bg-green-600 text-white">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <Avatar className="h-10 w-10">
-                <AvatarFallback className="bg-green-700">
-                  {user.email.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div>
-                <h2 className="font-medium truncate">{user.email}</h2>
-                <p className="text-xs text-green-100">Online</p>
+      <AnimatePresence>
+        {(showMobileMenu || window.innerWidth > 768) && (
+          <motion.div
+            initial={{ x: -300, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -300, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className="w-full md:w-[350px] flex flex-col border-r border-[#F0B232]/20 bg-white z-10 absolute md:relative h-full"
+          >
+            {/* Sidebar Header */}
+            <div className="p-4 bg-[#F0B232] flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <Avatar className="bg-[#dd9e29] text-white h-10 w-10">
+                  <AvatarFallback>
+                    {user.email.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <h2 className="font-medium text-white">DuckChat</h2>
+                  <p className="text-xs text-white/80">{user.email}</p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-white hover:bg-[#dd9e29]"
+                  onClick={handleLogout}
+                >
+                  <Menu className="h-5 w-5" />
+                </Button>
               </div>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-white hover:bg-green-700"
-              onClick={handleLogout}
-            >
-              <LogOut className="h-5 w-5" />
-            </Button>
-          </div>
-        </div>
 
-        {/* Search */}
-        <div className="p-3 border-b border-gray-200">
-          {showSearch ? (
-            <div className="flex items-center space-x-2">
+            {/* Search */}
+            <UserSearch
+              showSearch={showSearch}
+              setShowSearch={setShowSearch}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              searchResults={searchResults}
+              startPrivateChat={startPrivateChat}
+              searchInputRef={searchInputRef}
+            />
+
+            {/* Conversations List */}
+            {!showSearch && (
+              <ConversationList
+                contacts={contacts}
+                activeChat={activeChat}
+                goToGlobalChat={goToGlobalChat}
+                startPrivateChat={startPrivateChat}
+              />
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Chat Area */}
+      <div className="flex-1 flex flex-col relative">
+        {/* Chat Header */}
+        <div className="p-4 bg-white border-b border-[#F0B232]/20 flex items-center justify-between shadow-sm z-10">
+          <div className="flex items-center space-x-3">
+            {showMobileMenu === false && (
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
-                onClick={() => {
-                  setShowSearch(false);
-                  setSearchQuery("");
-                }}
+                className="md:hidden mr-1"
+                onClick={() => setShowMobileMenu(true)}
               >
-                <ArrowLeft className="h-4 w-4" />
+                <ArrowLeft className="h-5 w-5" />
               </Button>
-              <Input
-                ref={searchInputRef}
-                placeholder="Pesquisar usuários..."
-                className="flex-1"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                autoFocus
-              />
-            </div>
-          ) : (
-            <Button
-              variant="outline"
-              className="w-full justify-start text-gray-500"
-              onClick={() => {
-                setShowSearch(true);
-                setTimeout(() => searchInputRef.current?.focus(), 100);
-              }}
-            >
-              <Search className="h-4 w-4 mr-2" />
-              Pesquisar usuários
-            </Button>
-          )}
-        </div>
-
-        {/* Search Results */}
-        {showSearch && searchResults.length > 0 && (
-          <div className="overflow-y-auto">
-            <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase">
-              Resultados da pesquisa
-            </h3>
-            {searchResults.map((result) => (
-              <div
-                key={result.id}
-                className="px-4 py-3 flex items-center space-x-3 hover:bg-gray-100 cursor-pointer"
-                onClick={() => startPrivateChat(result)}
-              >
-                <Avatar className="h-10 w-10">
-                  <AvatarFallback className="bg-green-600 text-white">
-                    {result.email.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-900 truncate">
-                    {result.email}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Chats List */}
-        {!showSearch && (
-          <div className="flex-1 overflow-y-auto">
-            {/* Global Chat */}
-            <div
-              className={`px-4 py-3 flex items-center space-x-3 cursor-pointer ${
-                activeChat.type === "global"
-                  ? "bg-green-50"
-                  : "hover:bg-gray-100"
-              }`}
-              onClick={goToGlobalChat}
-            >
-              <Avatar className="h-10 w-10">
-                <AvatarFallback className="bg-green-600 text-white">
-                  <Users className="h-5 w-5" />
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-gray-900">Chat Global</p>
-                <p className="text-sm text-gray-500 truncate">
-                  Todos os usuários
-                </p>
-              </div>
-            </div>
-
-            {/* Contacts */}
-            {contacts.length > 0 && (
-              <>
-                <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase">
-                  Contatos
-                </h3>
-                {contacts.map((contact) => (
-                  <div
-                    key={contact.id}
-                    className={`px-4 py-3 flex items-center space-x-3 cursor-pointer ${
-                      activeChat.type === "private" &&
-                      activeChat.contactId === contact.id
-                        ? "bg-green-50"
-                        : "hover:bg-gray-100"
-                    }`}
-                    onClick={() => startPrivateChat(contact)}
-                  >
-                    <Avatar className="h-10 w-10">
-                      <AvatarFallback className="bg-green-600 text-white">
-                        {contact.email.charAt(0).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate">
-                        {contact.email}
-                      </p>
-                      <p className="text-sm text-gray-500 truncate">
-                        {contact.lastMessage || "Iniciar conversa"}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </>
             )}
-
-            {/* No Contacts */}
-            {contacts.length === 0 && (
-              <div className="px-4 py-8 text-center text-gray-500">
-                <p>Nenhum contato encontrado.</p>
-                <p className="text-sm mt-2">
-                  Use a pesquisa para encontrar usuários.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Chat Area */}
-      <div className="flex-1 flex flex-col">
-        {/* Chat Header */}
-        <div className="p-4 bg-white border-b border-gray-200 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Avatar className="h-10 w-10">
-              <AvatarFallback className="bg-green-600 text-white">
+            <Avatar className="bg-[#F0B232] text-white h-10 w-10">
+              <AvatarFallback>
                 {activeChat.type === "global" ? (
                   <Users className="h-5 w-5" />
                 ) : (
@@ -466,77 +431,159 @@ export default function ChatPage() {
             </Avatar>
             <div>
               <h2 className="font-medium text-gray-900">{activeChat.name}</h2>
-              <p className="text-sm text-gray-500">
-                {activeChat.type === "global"
-                  ? "Todos os usuários"
-                  : "Chat privado"}
+              <p className="text-xs text-gray-500">
+                {activeChat.type === "global" ? "Todos os usuários" : "Online"}
               </p>
             </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-[#F0B232] hover:bg-[#FFF7D6]"
+            >
+              <Phone className="h-5 w-5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-[#F0B232] hover:bg-[#FFF7D6]"
+            >
+              <Video className="h-5 w-5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-[#F0B232] hover:bg-[#FFF7D6]"
+            >
+              <MoreVertical className="h-5 w-5" />
+            </Button>
           </div>
         </div>
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+        <div className="flex-1 overflow-y-auto p-4 bg-[#FFF7D6]/60">
           {loading ? (
             <div className="flex justify-center items-center h-full">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{
+                  duration: 2,
+                  repeat: Number.POSITIVE_INFINITY,
+                  ease: "linear",
+                }}
+                className="w-16 h-16 text-[#F0B232]"
+              >
+                <Loader2 className="w-full h-full" />
+              </motion.div>
             </div>
-          ) : messages.length === 0 ? (
-            <div className="flex flex-col justify-center items-center h-full text-gray-500 space-y-4">
-              <MessageSquare className="h-16 w-16 text-green-200" />
-              <p className="text-lg">
-                Nenhuma mensagem ainda. Seja o primeiro a enviar!
+          ) : isChangingChat ? (
+            <LoadingDuck />
+          ) : isLoadingMessages ? (
+            <div className="flex flex-col justify-center items-center h-full">
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{
+                  duration: 1.5,
+                  repeat: Number.POSITIVE_INFINITY,
+                  ease: "linear",
+                }}
+                className="w-12 h-12 text-[#F0B232] mb-3"
+              >
+                <Loader2 className="w-full h-full" />
+              </motion.div>
+              <p className="text-[#dd9e29] font-medium">
+                Carregando mensagens...
               </p>
             </div>
+          ) : messages.length === 0 ? (
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="flex flex-col justify-center items-center h-full text-gray-500 space-y-4"
+            >
+              <motion.div
+                animate={{ y: [0, -10, 0] }}
+                transition={{
+                  duration: 2,
+                  repeat: Number.POSITIVE_INFINITY,
+                  ease: "easeInOut",
+                }}
+                className="text-[#dd9e29]"
+              >
+                <Duck size={64} />
+              </motion.div>
+              <p className="text-lg text-[#dd9e29]">
+                Nenhuma mensagem ainda. Seja o primeiro a enviar!
+              </p>
+            </motion.div>
           ) : (
             <div className="space-y-4">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex ${
-                    message.sender_id === user.id
-                      ? "justify-end"
-                      : "justify-start"
-                  }`}
-                >
-                  <div
-                    className={`max-w-[70%] p-3 rounded-lg ${
-                      message.sender_id === user.id
-                        ? "bg-green-600 text-white"
-                        : "bg-white border border-gray-200"
-                    }`}
+              <AnimatePresence>
+                {messages.map((message) => (
+                  <motion.div
+                    key={message.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.3 }}
                   >
-                    {message.sender_id !== user.id && (
-                      <p className="text-xs text-green-600 font-medium mb-1">
-                        {message.sender_email}
-                      </p>
-                    )}
-                    <p className="break-words">{message.message}</p>
-                    <p className="text-xs text-right mt-1 opacity-70">
-                      {formatMessageTime(message.created_at)}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                    <ChatMessage
+                      message={message}
+                      isCurrentUser={message.sender_id === user.id}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
               <div ref={messagesEndRef} />
             </div>
           )}
         </div>
 
         {/* Message Input */}
-        <div className="p-4 bg-white border-t border-gray-200">
-          <form onSubmit={sendMessage} className="flex space-x-2">
+        <motion.div
+          initial={{ y: 50 }}
+          animate={{ y: 0 }}
+          className="p-3 bg-white border-t border-[#F0B232]/20 shadow-md z-10"
+        >
+          <form onSubmit={sendMessage} className="flex items-center space-x-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="text-[#F0B232] hover:bg-[#FFF7D6]"
+            >
+              <Smile className="h-5 w-5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="text-[#F0B232] hover:bg-[#FFF7D6]"
+            >
+              <Paperclip className="h-5 w-5" />
+            </Button>
             <Input
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Digite sua mensagem..."
-              className="flex-1"
+              placeholder="Digite uma mensagem"
+              className="flex-1 bg-[#FFF7D6] border-none focus-visible:ring-[#F0B232] rounded-full"
+              disabled={isLoadingMessages || isChangingChat}
             />
-            <Button type="submit" className="bg-green-600 hover:bg-green-700">
-              <Send className="h-5 w-5" />
-            </Button>
+            <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
+              <Button
+                type="submit"
+                size="icon"
+                className="bg-[#F0B232] hover:bg-[#dd9e29] text-white rounded-full"
+                disabled={
+                  !newMessage.trim() || isLoadingMessages || isChangingChat
+                }
+              >
+                <Send className="h-5 w-5" />
+              </Button>
+            </motion.div>
           </form>
-        </div>
+        </motion.div>
       </div>
     </div>
   );

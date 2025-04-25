@@ -8,7 +8,14 @@ import { useAuth } from "../context/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MessageSquare, LogOut, Users, Send, User } from "lucide-react";
+import {
+  MessageSquare,
+  LogOut,
+  Users,
+  Send,
+  User,
+  Loader2,
+} from "lucide-react";
 import Link from "next/link";
 import ChatMessage from "../components/chat-message";
 import {
@@ -18,6 +25,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { motion } from "framer-motion";
+import LoadingDuck from "../components/loading-duck";
 
 interface Message {
   id: number;
@@ -40,6 +49,8 @@ export default function PrivateChatPage() {
   const [newMessage, setNewMessage] = useState("");
   const [receiverEmail, setReceiverEmail] = useState("");
   const [loading, setLoading] = useState(true);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [isChangingChat, setIsChangingChat] = useState(false);
   const { user, logout } = useAuth();
   const router = useRouter();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -53,7 +64,7 @@ export default function PrivateChatPage() {
     fetchContacts();
     const interval = setInterval(() => {
       if (receiverEmail) {
-        fetchPrivateMessages();
+        fetchPrivateMessages(false); // Não mostrar indicador de carregamento para atualizações automáticas
       }
     }, 3000); // Poll for new messages every 3 seconds
 
@@ -85,8 +96,12 @@ export default function PrivateChatPage() {
     }
   };
 
-  const fetchPrivateMessages = async () => {
+  const fetchPrivateMessages = async (showLoading = true) => {
     if (!receiverEmail) return;
+
+    if (showLoading) {
+      setIsLoadingMessages(true);
+    }
 
     try {
       const response = await fetch("http://localhost:8000/get_private.php", {
@@ -109,6 +124,10 @@ export default function PrivateChatPage() {
     } catch (err) {
       console.error("Error fetching private messages:", err);
       setLoading(false);
+    } finally {
+      if (showLoading) {
+        setIsLoadingMessages(false);
+      }
     }
   };
 
@@ -134,7 +153,7 @@ export default function PrivateChatPage() {
 
       if (data.success) {
         setNewMessage("");
-        fetchPrivateMessages();
+        fetchPrivateMessages(false); // Não mostrar indicador de carregamento após envio
       }
     } catch (err) {
       console.error("Error sending private message:", err);
@@ -148,6 +167,21 @@ export default function PrivateChatPage() {
   const handleLogout = () => {
     logout();
     router.push("/login");
+  };
+
+  const handleReceiverChange = (email: string) => {
+    // IMPORTANTE: Limpar mensagens e ativar tela de carregamento
+    setMessages([]);
+    setIsChangingChat(true);
+
+    // Depois mudar o contato
+    setReceiverEmail(email);
+
+    // Buscar mensagens depois de um delay para mostrar a animação
+    setTimeout(() => {
+      fetchPrivateMessages();
+      setIsChangingChat(false);
+    }, 2000);
   };
 
   if (!user) {
@@ -192,7 +226,10 @@ export default function PrivateChatPage() {
                   : "Selecione um contato"}
               </CardTitle>
               <div className="w-64">
-                <Select onValueChange={setReceiverEmail} value={receiverEmail}>
+                <Select
+                  onValueChange={handleReceiverChange}
+                  value={receiverEmail}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione um contato" />
                   </SelectTrigger>
@@ -214,7 +251,37 @@ export default function PrivateChatPage() {
               </div>
             ) : loading ? (
               <div className="flex justify-center items-center h-full">
-                <p>Carregando mensagens...</p>
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{
+                    duration: 2,
+                    repeat: Number.POSITIVE_INFINITY,
+                    ease: "linear",
+                  }}
+                  className="w-12 h-12 text-green-600 mr-3"
+                >
+                  <Loader2 className="w-full h-full" />
+                </motion.div>
+                <p>Carregando...</p>
+              </div>
+            ) : isChangingChat ? (
+              <LoadingDuck />
+            ) : isLoadingMessages ? (
+              <div className="flex flex-col justify-center items-center h-full">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{
+                    duration: 1.5,
+                    repeat: Number.POSITIVE_INFINITY,
+                    ease: "linear",
+                  }}
+                  className="w-12 h-12 text-green-600 mb-3"
+                >
+                  <Loader2 className="w-full h-full" />
+                </motion.div>
+                <p className="text-green-600 font-medium">
+                  Carregando mensagens...
+                </p>
               </div>
             ) : messages.length === 0 ? (
               <div className="flex justify-center items-center h-full text-gray-500">
@@ -248,12 +315,17 @@ export default function PrivateChatPage() {
                 : "Selecione um contato primeiro"
             }
             className="flex-1"
-            disabled={!receiverEmail}
+            disabled={!receiverEmail || isLoadingMessages || isChangingChat}
           />
           <Button
             type="submit"
             className="bg-green-600 hover:bg-green-700"
-            disabled={!receiverEmail}
+            disabled={
+              !receiverEmail ||
+              !newMessage.trim() ||
+              isLoadingMessages ||
+              isChangingChat
+            }
           >
             <Send className="h-5 w-5" />
           </Button>

@@ -20,7 +20,6 @@ interface ChatMessageProps {
 export default function ChatMessage({
   message,
   isCurrentUser,
-  isPrivate = false,
 }: ChatMessageProps) {
   const initials = message.sender_email.split("@")[0].slice(0, 2).toUpperCase();
 

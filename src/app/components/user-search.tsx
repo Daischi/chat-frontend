@@ -6,7 +6,19 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Search, ArrowLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Avatar } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+
+import type { RefObject } from "react";
+
+interface UserSearchProps {
+  showSearch: boolean;
+  setShowSearch: (show: boolean) => void;
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  searchResults: Contact[];
+  startPrivateChat: (contact: Contact) => void;
+  searchInputRef: RefObject<HTMLInputElement>;
+}
 
 interface Contact {
   id: number;
@@ -91,11 +103,11 @@ export default function UserSearch({
                     className="px-4 py-3 flex items-center space-x-3 hover:bg-[#FFF7D6]/50 cursor-pointer"
                     onClick={() => startPrivateChat(result)}
                   >
-                    <Avatar
-                      src="/duck-avatar.png"
-                      fallback={result.email.charAt(0).toUpperCase()}
-                      className="h-10 w-10 bg-[#F0B232] text-white"
-                    />
+                    <Avatar className="h-10 w-10 bg-[#F0B232] text-white">
+                      <AvatarFallback>
+                        {result.email.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-gray-900 truncate">
                         {result.email}
