@@ -6,6 +6,28 @@ import { Users, MessageCircle, UserPlus } from "lucide-react";
 import { formatRelativeTime } from "@/lib/utils";
 import UserSearch from "./user-search";
 import { useAuth } from "../context/auth-context";
+import PropTypes from "prop-types";
+
+ConversationList.propTypes = {
+  contacts: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.number.isRequired,
+      email: PropTypes.string.isRequired,
+      lastMessage: PropTypes.string,
+      lastMessageTime: PropTypes.string,
+      unreadCount: PropTypes.number,
+    })
+  ).isRequired,
+  activeChat: PropTypes.shape({
+    id: PropTypes.number.isRequired,
+    type: PropTypes.oneOf(["global", "private"]).isRequired,
+    name: PropTypes.string.isRequired,
+    contactId: PropTypes.number,
+    contactEmail: PropTypes.string,
+  }).isRequired,
+  goToGlobalChat: PropTypes.func.isRequired,
+  startPrivateChat: PropTypes.func.isRequired,
+};
 
 interface Contact {
   id: number;

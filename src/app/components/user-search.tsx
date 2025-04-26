@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, ArrowLeft } from "lucide-react";
 import type { RefObject } from "react";
@@ -29,6 +30,13 @@ export default function UserSearch({
   startPrivateChat,
   searchInputRef,
 }: UserSearchProps) {
+  useEffect(() => {
+    if (showSearch) {
+      // Garante que o input será focado assim que for exibido
+      searchInputRef.current?.focus();
+    }
+  }, [showSearch, searchInputRef]);
+
   return (
     <>
       <div className="mx-4 mb-4">
@@ -63,10 +71,7 @@ export default function UserSearch({
                 type="text"
                 placeholder="Pesquisar conversas..."
                 className="w-full py-2 pl-10 pr-4 bg-white border border-amber-200 rounded-full text-sm text-amber-900 placeholder-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-colors"
-                onFocus={() => {
-                  setShowSearch(true);
-                  setTimeout(() => searchInputRef.current?.focus(), 100);
-                }}
+                onFocus={() => setShowSearch(true)}
               />
             </div>
           )}
