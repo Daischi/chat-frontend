@@ -1,7 +1,6 @@
 "use client";
 
-import type React from "react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
@@ -15,6 +14,7 @@ import {
   RabbitIcon as Duck,
   Users,
   MessageSquare,
+  X,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,16 @@ import { useAuth } from "../context/auth-context";
 import ChatMessage from "../components/chat-message";
 import ConversationList from "../components/conversation-list";
 import LoadingDuck from "../components/loading-duck";
+import AttachmentPanel from "../components/attachment-panel";
+import UploadService from "../components/upload-service";
+
+interface Attachment {
+  file: File;
+  progress: number;
+  uploading: boolean;
+  uploaded: boolean;
+  url?: string;
+}
 
 interface Message {
   id: number;
@@ -32,6 +42,14 @@ interface Message {
   created_at: string;
   receiver_id?: number;
   receiver_email?: string;
+  attachments?: {
+    id: number;
+    fileName: string;
+    fileSize: number;
+    fileType: string;
+    url: string;
+    previewUrl?: string;
+  }[];
 }
 
 interface Contact {
@@ -93,12 +111,15 @@ export default function ChatPage() {
   const [newMessage, setNewMessage] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [, setSearchResults] = useState<Contact[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [searchResults, setSearchResults] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isChangingChat, setIsChangingChat] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(true);
   const [isTyping, setIsTyping] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [showAttachmentPanel, setShowAttachmentPanel] = useState(false);
 
   const { user } = useAuth();
   const router = useRouter();
@@ -156,6 +177,48 @@ export default function ChatPage() {
       clearTimeout(typingTimeout);
     };
   }, [newMessage]);
+
+  const handleAttach = (files: File[]) => {
+    const newAttachments = files.map((file) => ({
+      file,
+      progress: 0,
+      uploading: true,
+      uploaded: false,
+    }));
+
+    setAttachments((prev) => [...prev, ...newAttachments]);
+
+    files.forEach((file, index) => {
+      const attachmentIndex = attachments.length + index;
+
+      UploadService.uploadFile(file, (progress) => {
+        setAttachments((current) =>
+          current.map((att, i) =>
+            i === attachmentIndex ? { ...att, progress } : att
+          )
+        );
+      }).then((result) => {
+        if (result.success && result.fileUrl) {
+          setAttachments((current) =>
+            current.map((att, i) =>
+              i === attachmentIndex
+                ? {
+                    ...att,
+                    uploading: false,
+                    uploaded: true,
+                    url: result.fileUrl,
+                  }
+                : att
+            )
+          );
+        }
+      });
+    });
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments((current) => current.filter((_, i) => i !== index));
+  };
 
   const fetchContacts = async () => {
     try {
@@ -251,7 +314,7 @@ export default function ChatPage() {
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!newMessage.trim() || !user) return;
+    if ((!newMessage.trim() && attachments.length === 0) || !user) return;
 
     const tempMessage: Message = {
       id: Date.now(),
@@ -259,10 +322,18 @@ export default function ChatPage() {
       sender_email: user.email,
       message: newMessage,
       created_at: new Date().toISOString(),
+      attachments: attachments.map((att, index) => ({
+        id: index,
+        fileName: att.file.name,
+        fileSize: att.file.size,
+        fileType: att.file.type,
+        url: att.url || "",
+      })),
     };
 
     setMessages((prev) => [...prev, tempMessage]);
     setNewMessage("");
+    setAttachments([]);
 
     try {
       let response;
@@ -276,6 +347,7 @@ export default function ChatPage() {
           body: JSON.stringify({
             user_id: user.id,
             message: tempMessage.message,
+            attachments: tempMessage.attachments,
           }),
         });
       } else {
@@ -288,6 +360,7 @@ export default function ChatPage() {
             user_id: user.id,
             receiver_id: activeChat.contactId,
             message: tempMessage.message,
+            attachments: tempMessage.attachments,
           }),
         });
       }
@@ -585,71 +658,125 @@ export default function ChatPage() {
             transition={{ delay: 0.2, duration: 0.5, type: "spring" }}
             className="p-3 bg-white/90 backdrop-blur-sm border-t border-amber-200/50 shadow-lg z-10"
           >
-            <form
-              onSubmit={sendMessage}
-              className="flex items-center space-x-2"
-            >
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="text-amber-500 hover:bg-amber-100 rounded-full"
+            <div className="relative">
+              <AttachmentPanel
+                isOpen={showAttachmentPanel}
+                onClose={() => setShowAttachmentPanel(false)}
+                onAttach={handleAttach}
+              />
+
+              <form
+                onSubmit={sendMessage}
+                className="flex items-center space-x-2"
               >
-                <Smile className="h-5 w-5" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="text-amber-500 hover:bg-amber-100 rounded-full"
-              >
-                <Paperclip className="h-5 w-5" />
-              </Button>
-              <div className="relative flex-1">
-                <Input
-                  ref={messageInputRef}
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Digite uma mensagem"
-                  className="flex-1 bg-amber-50 border-amber-200 focus-visible:ring-amber-400 rounded-full pl-4 pr-10 py-6 shadow-inner"
-                  disabled={isLoadingMessages || isChangingChat}
-                />
-                {isTyping && (
-                  <span className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                    <motion.div
-                      className="flex space-x-1"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                    >
-                      {[0, 1, 2].map((i) => (
-                        <motion.div
-                          key={i}
-                          className="h-2 w-2 rounded-full bg-amber-400"
-                          animate={{ y: ["0%", "-50%", "0%"] }}
-                          transition={{
-                            duration: 0.5,
-                            repeat: Infinity,
-                            delay: i * 0.1,
-                          }}
-                        />
-                      ))}
-                    </motion.div>
-                  </span>
-                )}
-              </div>
-              <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
                 <Button
-                  type="submit"
+                  type="button"
+                  variant="ghost"
                   size="icon"
-                  className="bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-600 hover:to-amber-500 text-white rounded-full shadow-md w-12 h-12 flex items-center justify-center"
-                  disabled={
-                    !newMessage.trim() || isLoadingMessages || isChangingChat
-                  }
+                  className="text-amber-500 hover:bg-amber-100 rounded-full"
                 >
-                  <Send className="h-5 w-5" />
+                  <Smile className="h-5 w-5" />
                 </Button>
-              </motion.div>
-            </form>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={`text-amber-500 hover:bg-amber-100 rounded-full ${
+                    showAttachmentPanel ? "bg-amber-50" : ""
+                  }`}
+                  onClick={() => setShowAttachmentPanel(!showAttachmentPanel)}
+                >
+                  <Paperclip className="h-5 w-5" />
+                </Button>
+                <div className="relative flex-1">
+                  <div className="flex space-x-1 absolute bottom-full mb-2">
+                    <AnimatePresence>
+                      {attachments.map((attachment, index) => (
+                        <motion.div
+                          key={`${attachment.file.name}-${index}`}
+                          initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                          className="group relative bg-amber-50 rounded-md border border-amber-200 px-2 py-1 text-xs flex items-center"
+                        >
+                          <span
+                            className="truncate max-w-32"
+                            title={attachment.file.name}
+                          >
+                            {attachment.file.name}
+                          </span>
+
+                          {attachment.uploading && (
+                            <div className="ml-2 w-12 h-1 bg-gray-200 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-amber-500 rounded-full transition-all duration-300"
+                                style={{ width: `${attachment.progress}%` }}
+                              ></div>
+                            </div>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => removeAttachment(index)}
+                            className="ml-1 text-gray-400 hover:text-red-500 transition-colors"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+
+                  <Input
+                    ref={messageInputRef}
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    placeholder="Digite uma mensagem"
+                    className="flex-1 bg-amber-50 border-amber-200 focus-visible:ring-amber-400 rounded-full pl-4 pr-10 py-6 shadow-inner"
+                    disabled={isLoadingMessages || isChangingChat}
+                  />
+                  {isTyping && (
+                    <span className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <motion.div
+                        className="flex space-x-1"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                      >
+                        {[0, 1, 2].map((i) => (
+                          <motion.div
+                            key={i}
+                            className="h-2 w-2 rounded-full bg-amber-400"
+                            animate={{ y: ["0%", "-50%", "0%"] }}
+                            transition={{
+                              duration: 0.5,
+                              repeat: Infinity,
+                              delay: i * 0.1,
+                            }}
+                          />
+                        ))}
+                      </motion.div>
+                    </span>
+                  )}
+                </div>
+                <motion.div
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                >
+                  <Button
+                    type="submit"
+                    size="icon"
+                    className="bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-600 hover:to-amber-500 text-white rounded-full shadow-md w-12 h-12 flex items-center justify-center"
+                    disabled={
+                      (!newMessage.trim() && attachments.length === 0) ||
+                      isLoadingMessages ||
+                      isChangingChat
+                    }
+                  >
+                    <Send className="h-5 w-5" />
+                  </Button>
+                </motion.div>
+              </form>
+            </div>
           </motion.div>
         </div>
       </div>
